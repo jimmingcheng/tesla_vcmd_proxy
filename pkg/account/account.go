@@ -67,6 +67,7 @@ type Account struct {
 	UserAgent  string
 	authHeader string
 	Host       string
+	Subject    string
 	client     http.Client
 }
 
@@ -74,6 +75,7 @@ type Account struct {
 type oauthPayload struct {
 	Audiences []string `json:"aud"`
 	OUCode    string   `json:"ou_code"`
+	Subject   string   `json:"sub"`
 }
 
 var domainRegEx = regexp.MustCompile(`^[A-Za-z0-9-.]+$`) // We're mostly interested in stopping paths; the http package handles the rest.
@@ -136,6 +138,7 @@ func New(oauthToken, userAgent string) (*Account, error) {
 		UserAgent:  buildUserAgent(userAgent),
 		authHeader: "Bearer " + strings.TrimSpace(oauthToken),
 		Host:       domain,
+		Subject:    payload.Subject,
 	}, nil
 }
 
@@ -146,7 +149,7 @@ func New(oauthToken, userAgent string) (*Account, error) {
 // an AddKeyRequest; see documentation in [pkg/github.com/teslamotors/vehicle-command/pkg/vehicle]. The
 // sessions parameter may also be nil, but providing a cache.SessionCache avoids a round-trip
 // handshake with the Vehicle in subsequent connections.
-func (a *Account) GetVehicle(ctx context.Context, vin string, privateKey authentication.ECDHPrivateKey, sessions *cache.SessionCache) (*vehicle.Vehicle, error) {
+func (a *Account) GetVehicle(_ context.Context, vin string, privateKey authentication.ECDHPrivateKey, sessions *cache.SessionCache) (*vehicle.Vehicle, error) {
 	conn := inet.NewConnection(vin, a.authHeader, a.Host, a.UserAgent)
 	car, err := vehicle.NewVehicle(conn, privateKey, sessions)
 	if err != nil {
@@ -173,7 +176,9 @@ func (a *Account) Get(ctx context.Context, endpoint string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error fetching %s: %w", endpoint, err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode != http.StatusOK {
 		err := fmt.Errorf("http error when sending command to %s: %s", url, response.Status)
 		return nil, err

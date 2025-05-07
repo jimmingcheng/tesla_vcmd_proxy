@@ -1,4 +1,4 @@
-FROM golang:1.22 as builder
+FROM golang:1.23.0 AS build
 
 WORKDIR /app
 
@@ -7,20 +7,14 @@ RUN go mod download
 
 COPY . .
 
-RUN go build ./...
+RUN mkdir build
+RUN go build -o ./build ./...
 
-RUN go install ./...
+FROM gcr.io/distroless/base-debian12:nonroot AS runtime
 
-FROM ubuntu:22.04
+COPY --from=build /app/build /usr/local/bin
 
-RUN apt-get update && apt-get install -y \
-    curl
-
-COPY --from=builder /go/bin/tesla-* /usr/local/bin/
-
-RUN groupadd -g 72277 sbapp
-RUN useradd -ms /bin/bash -g sbapp -u 1001 scooterbot
-USER scooterbot
+USER 1001:72277
 
 CMD [ \
   "tesla-http-proxy", \
